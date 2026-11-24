@@ -1,10 +1,11 @@
 
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 from modules.data_loader import load_dex_data
-from modules.generator import MODE_CONFIG, generate_string
+from modules.generator import MODE_CONFIG, generate_string, generate_list
 
 
 # ============================================================
@@ -30,18 +31,17 @@ st.caption("依照 Excel 資料篩選寶可夢，產生可複製的搜尋字串"
 
 
 # ============================================================
-#                     Excel 資料讀取
+#                     Session State
 # ============================================================
-
-if not EXCEL_PATH.exists():
-    st.error(f"找不到 Excel 檔案：{EXCEL_PATH}")
-    st.stop()
 
 if "generated_names" not in st.session_state:
     st.session_state.generated_names = []
 
 if "generated_string" not in st.session_state:
     st.session_state.generated_string = ""
+
+if "generated_rows" not in st.session_state:
+    st.session_state.generated_rows = []
 
 if "generated_mode" not in st.session_state:
     st.session_state.generated_mode = ""
@@ -52,15 +52,21 @@ if "generated_mode" not in st.session_state:
 # ============================================================
 
 with st.sidebar:
+
     st.header("資料設定")
 
     st.write("Excel 檔案：")
     st.code(EXCEL_PATH.name)
 
     if st.button("重新載入 Excel", use_container_width=True):
+
         load_dex_data.clear()
+
         st.session_state.generated_names = []
         st.session_state.generated_string = ""
+        st.session_state.generated_rows = []
+        st.session_state.generated_mode = ""
+
         st.rerun()
 
 
@@ -68,7 +74,12 @@ with st.sidebar:
 #                     載入資料
 # ============================================================
 
+if not EXCEL_PATH.exists():
+    st.error(f"找不到 Excel 檔案：{EXCEL_PATH}")
+    st.stop()
+
 try:
+
     file_mtime = EXCEL_PATH.stat().st_mtime
 
     dex_data = load_dex_data(
@@ -77,6 +88,7 @@ try:
     )
 
 except Exception as e:
+
     st.error(f"Excel 讀取失敗：{e}")
     st.stop()
 
@@ -109,11 +121,12 @@ limit = st.number_input(
 
 
 # ============================================================
-#                     產生字串
+#                     產生結果
 # ============================================================
 
 if st.button("產生搜尋字串", type="primary", use_container_width=True):
 
+    # 搜尋字串：E 欄去除重複
     names = generate_string(
         dex_data,
         mode,
@@ -122,8 +135,16 @@ if st.button("產生搜尋字串", type="primary", use_container_width=True):
 
     result = "&".join(names)
 
+    # 下方清單：D、E 欄保留重複
+    rows = generate_list(
+        dex_data,
+        mode,
+        limit
+    )
+
     st.session_state.generated_names = names
     st.session_state.generated_string = result
+    st.session_state.generated_rows = rows
     st.session_state.generated_mode = mode
 
 
@@ -142,28 +163,56 @@ if st.session_state.generated_mode:
     )
 
     st.write(
-        f"符合條件的寶可夢數量：**{len(st.session_state.generated_names)}**"
+        f"搜尋字串不重複數量：**{len(st.session_state.generated_names)}**"
     )
+
+    st.write(
+        f"篩選清單資料筆數：**{len(st.session_state.generated_rows)}**"
+    )
+
+    # --------------------------------------------------------
+    #                     搜尋字串
+    # --------------------------------------------------------
 
     if st.session_state.generated_string:
 
-        st.caption("搜尋字串（可直接複製）")
+        st.caption("搜尋字串（E 欄去除重複）")
 
         st.code(
             st.session_state.generated_string,
             language=None
         )
 
-        with st.expander("查看篩選出的寶可夢清單"):
-
-            for index, name in enumerate(
-                st.session_state.generated_names,
-                start=1
-            ):
-                st.write(f"{index}. {name}")
-
     else:
+
         st.warning("沒有找到符合條件的寶可夢。")
 
+    # --------------------------------------------------------
+    #                  D、E 欄完整清單
+    # --------------------------------------------------------
+
+    with st.expander("查看篩選出的寶可夢清單", expanded=True):
+
+        if st.session_state.generated_rows:
+
+            df = pd.DataFrame(
+                st.session_state.generated_rows
+            )
+
+            df.columns = ["D 欄", "E 欄"]
+
+            df.index = range(1, len(df) + 1)
+
+            st.dataframe(
+                df,
+                use_container_width=True,
+                height=500
+            )
+
+        else:
+
+            st.info("沒有符合條件的資料。")
+
 else:
+
     st.info("請設定篩選條件，然後按下「產生搜尋字串」。")
