@@ -53,10 +53,7 @@ MODE_CONFIG = {
 
 def to_number(value):
 
-    if value is None:
-        return None
-
-    if isinstance(value, bool):
+    if value is None or isinstance(value, bool):
         return None
 
     try:
@@ -72,89 +69,94 @@ def to_number(value):
 
 
 # ============================================================
-#                     產生搜尋字串
+#                     判斷是否符合篩選條件
 # ============================================================
 
-def generate_string(data, mode, limit):
+def is_matched(row, mode, limit):
 
     if mode not in MODE_CONFIG:
-        return []
+        return False
 
     config = MODE_CONFIG[mode]
 
     column = config["column"]
     operator = config["operator"]
 
+    if mode == "PVE":
+
+        cp_value = to_number(row.get("I"))
+
+        max_type = str(
+            row.get("U") or ""
+        ).strip().upper()
+
+        condition_1 = (
+            cp_value is not None
+            and cp_value < limit
+        )
+
+        condition_2 = (
+            max_type == "MAX"
+        )
+
+        return condition_1 and condition_2
+
+    value = to_number(row.get(column))
+
+    if value is None:
+        return False
+
+    if operator == ">":
+        return value > limit
+
+    elif operator == "<":
+        return value < limit
+
+    return False
+
+
+# ============================================================
+#                  產生搜尋字串（去除重複）
+# ============================================================
+
+def generate_string(data, mode, limit):
+
     selected_names = []
     seen_names = set()
 
     for row in data:
 
-        name = row.get("name")
+        if not is_matched(row, mode, limit):
+            continue
+
+        name = str(row.get("name") or "").strip()
 
         if not name:
             continue
 
-        name = str(name).strip()
-
-        if not name:
-            continue
-
-        # ----------------------------------------------------
-        #                     PVE 篩選
-        # ----------------------------------------------------
-
-        if mode == "PVE":
-
-            cp_value = to_number(row.get("I"))
-
-            max_type = str(
-                row.get("U") or ""
-            ).strip().upper()
-
-            # 條件一：I 欄 < CP 上限
-            condition_1 = (
-                cp_value is not None
-                and cp_value < limit
-            )
-
-            # 條件二：U 欄 = MAX
-            condition_2 = (
-                max_type == "MAX"
-            )
-
-            matched = condition_1 and condition_2
-
-        # ----------------------------------------------------
-        #                  其他聯盟篩選
-        # ----------------------------------------------------
-
-        else:
-
-            value = to_number(row.get(column))
-
-            if value is None:
-                continue
-
-            if operator == ">":
-                matched = value > limit
-
-            elif operator == "<":
-                matched = value < limit
-
-            else:
-                matched = False
-
-        # ----------------------------------------------------
-        #                     結果整理
-        # ----------------------------------------------------
-
-        if matched:
-
-            # 去除重複名稱，保留第一次出現的順序
-            if name not in seen_names:
-
-                selected_names.append(name)
-                seen_names.add(name)
+        if name not in seen_names:
+            selected_names.append(name)
+            seen_names.add(name)
 
     return selected_names
+
+
+# ============================================================
+#               產生下方清單（保留重複）
+# ============================================================
+
+def generate_list(data, mode, limit):
+
+    selected_rows = []
+
+    for row in data:
+
+        if not is_matched(row, mode, limit):
+            continue
+
+        selected_rows.append({
+            "D": row.get("D"),
+            "E": row.get("name"),
+        })
+
+    return selected_rows
