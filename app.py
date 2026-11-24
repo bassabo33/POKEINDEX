@@ -135,7 +135,7 @@ if st.button("產生搜尋字串", type="primary", use_container_width=True):
 
     result = "&".join(names)
 
-    # 下方清單：D、E 欄保留重複
+    # 下方清單：C、E 欄保留重複
     rows = generate_list(
         dex_data,
         mode,
@@ -188,7 +188,7 @@ if st.session_state.generated_mode:
         st.warning("沒有找到符合條件的寶可夢。")
 
     # --------------------------------------------------------
-    #                  D、E 欄完整清單
+    #                  C、E 欄完整清單
     # --------------------------------------------------------
 
     with st.expander("查看篩選出的寶可夢清單", expanded=True):
@@ -199,7 +199,7 @@ if st.session_state.generated_mode:
                 st.session_state.generated_rows
             )
 
-            df.columns = ["D 欄", "E 欄"]
+            df.columns = ["C 欄", "E 欄"]
 
             df.index = range(1, len(df) + 1)
 
