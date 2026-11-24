@@ -1,126 +1,169 @@
+
+from pathlib import Path
+
 import streamlit as st
 
 from modules.data_loader import load_dex_data
-from modules.generator import generate_string, MODE_CONFIG
+from modules.generator import MODE_CONFIG, generate_string
+
+
+# ============================================================
+#                     基本設定
+# ============================================================
+
+BASE_DIR = Path(__file__).resolve().parent
+EXCEL_PATH = BASE_DIR / "data" / "PVP_collection.xlsx"
 
 st.set_page_config(
-    page_title="Pokémon GO String Generator",
-    page_icon="🎮",
-    layout="wide",
+    page_title="PVP String Generator",
+    page_icon="⚡",
+    layout="wide"
 )
 
-st.title("Pokémon GO String Generator")
-st.caption("依照 Excel DEX 工作表的排名資料，篩選寶可夢並產生遊戲內搜尋字串。")
 
-EXCEL_PATH = "data/PVP_collection.xlsx"
+# ============================================================
+#                     頁面標題
+# ============================================================
 
-# ------------------------------------------------------------
-# Sidebar：資料管理
-# ------------------------------------------------------------
+st.title("⚡ Pokémon GO PVP String Generator")
+st.caption("依照 Excel 資料篩選寶可夢，產生可複製的搜尋字串")
+
+
+# ============================================================
+#                     Excel 資料讀取
+# ============================================================
+
+if not EXCEL_PATH.exists():
+    st.error(f"找不到 Excel 檔案：{EXCEL_PATH}")
+    st.stop()
+
+if "generated_names" not in st.session_state:
+    st.session_state.generated_names = []
+
+if "generated_string" not in st.session_state:
+    st.session_state.generated_string = ""
+
+if "generated_mode" not in st.session_state:
+    st.session_state.generated_mode = ""
+
+
+# ============================================================
+#                     Sidebar
+# ============================================================
+
 with st.sidebar:
-    st.header("資料管理")
-    st.write("資料來源：`data/PVP_collection.xlsx`")
+    st.header("資料設定")
+
+    st.write("Excel 檔案：")
+    st.code(EXCEL_PATH.name)
+
     if st.button("重新載入 Excel", use_container_width=True):
         load_dex_data.clear()
-        st.session_state.pop("generated_result", None)
+        st.session_state.generated_names = []
+        st.session_state.generated_string = ""
         st.rerun()
 
-# ------------------------------------------------------------
-# 條件設定
-# ------------------------------------------------------------
+
+# ============================================================
+#                     載入資料
+# ============================================================
+
+try:
+    file_mtime = EXCEL_PATH.stat().st_mtime
+
+    dex_data = load_dex_data(
+        str(EXCEL_PATH),
+        file_mtime
+    )
+
+except Exception as e:
+    st.error(f"Excel 讀取失敗：{e}")
+    st.stop()
+
+if not dex_data:
+    st.warning("Excel 中沒有讀取到有效資料。")
+    st.stop()
+
+
+# ============================================================
+#                     篩選模式
+# ============================================================
+
+st.subheader("篩選設定")
+
 mode = st.selectbox(
-    "選擇遊戲模式",
-    options=list(MODE_CONFIG.keys()),
-    index=0,
+    "選擇篩選模式",
+    options=list(MODE_CONFIG.keys())
 )
 
 config = MODE_CONFIG[mode]
-limit_label = "CP 限制" if config["limit_type"] == "cp" else "排名限制"
 
-default_value = config["default"]
-limit_value = st.number_input(
-    limit_label,
+limit = st.number_input(
+    config["limit_label"],
     min_value=0,
     max_value=100000,
-    value=default_value,
+    value=config["default"],
     step=1,
-    help=f"{mode} 的預設值為 {default_value}，可自行修改。",
-    key=f"limit_{mode}",
+    key=f"limit_{mode}"
 )
 
-if config["status"] == "pending":
-    st.warning(
-        "PVE 的資料來源與篩選欄位尚未確認。"
-        "目前先保留 PVE 選項及 CP 限制輸入框，但暫不執行產生，"
-        "避免誤用尚未確認的 Excel 欄位。"
+
+# ============================================================
+#                     產生字串
+# ============================================================
+
+if st.button("產生搜尋字串", type="primary", use_container_width=True):
+
+    names = generate_string(
+        dex_data,
+        mode,
+        limit
     )
-else:
-    st.caption(
-        f"資料來源：DEX 工作表｜篩選欄位：{config['column']} 欄｜"
-        f"中文名稱：E 欄｜條件：{config['column']} > {int(limit_value)}"
-    )
 
-# ------------------------------------------------------------
-# 產生字串
-# ------------------------------------------------------------
-generate_clicked = st.button(
-    "產生字串",
-    type="primary",
-    use_container_width=True,
-    disabled=(config["status"] == "pending"),
-)
+    result = "&".join(names)
 
-if generate_clicked:
-    try:
-        dex_data = load_dex_data(EXCEL_PATH)
-        names = generate_string(
-            rows=dex_data,
-            mode=mode,
-            limit=int(limit_value),
-        )
-        st.session_state["generated_result"] = {
-            "mode": mode,
-            "limit": int(limit_value),
-            "names": names,
-            "string": "&".join(names),
-        }
-    except FileNotFoundError:
-        st.error(f"找不到 Excel 檔案：{EXCEL_PATH}")
-    except Exception as exc:
-        st.error(f"讀取或處理 Excel 時發生錯誤：{exc}")
+    st.session_state.generated_names = names
+    st.session_state.generated_string = result
+    st.session_state.generated_mode = mode
 
-# ------------------------------------------------------------
-# 結果
-# ------------------------------------------------------------
-result = st.session_state.get("generated_result")
 
-if result:
-    st.divider()
-    st.subheader("產生結果")
-
-    # 若切換模式但尚未重新產生，不顯示舊模式結果造成誤解
-    if result["mode"] != mode:
-        st.info("目前顯示的是上一次產生的結果。請按「產生字串」更新。")
-    else:
-        st.success(
-            f"完成：{len(result['names']):,} 個不重複名稱｜"
-            f"{result['mode']}｜限制值：{result['limit']}"
-        )
-
-    if result["string"]:
-        st.markdown("**字串（使用 `&` 串接）**")
-        st.code(result["string"], language=None)
-        st.caption("點擊字串區塊右上角的複製圖示，即可複製整段字串。")
-
-        with st.expander(f"查看篩選後名稱清單（{len(result['names']):,} 筆）"):
-            st.write("、".join(result["names"]))
-    else:
-        st.warning("沒有符合條件的資料，因此沒有產生字串。")
-else:
-    st.info("請選擇遊戲模式、設定限制值，再按「產生字串」。")
+# ============================================================
+#                     輸出結果
+# ============================================================
 
 st.divider()
-st.caption(
-    "目前已完成：超級聯盟、高級聯盟、大師聯盟、小小盃。"
-    "PVE 待確認資料來源後再啟用。"
-)
+
+st.subheader("產生結果")
+
+if st.session_state.generated_mode:
+
+    st.write(
+        f"目前模式：**{st.session_state.generated_mode}**"
+    )
+
+    st.write(
+        f"符合條件的寶可夢數量：**{len(st.session_state.generated_names)}**"
+    )
+
+    if st.session_state.generated_string:
+
+        st.caption("搜尋字串（可直接複製）")
+
+        st.code(
+            st.session_state.generated_string,
+            language=None
+        )
+
+        with st.expander("查看篩選出的寶可夢清單"):
+
+            for index, name in enumerate(
+                st.session_state.generated_names,
+                start=1
+            ):
+                st.write(f"{index}. {name}")
+
+    else:
+        st.warning("沒有找到符合條件的寶可夢。")
+
+else:
+    st.info("請設定篩選條件，然後按下「產生搜尋字串」。")
