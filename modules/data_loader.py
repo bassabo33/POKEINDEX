@@ -5,10 +5,6 @@ import openpyxl
 import streamlit as st
 
 
-# ============================================================
-#                     Excel 資料讀取
-# ============================================================
-
 @st.cache_data
 def load_dex_data(file_path: str, file_mtime: float):
 
@@ -28,33 +24,31 @@ def load_dex_data(file_path: str, file_mtime: float):
             raise ValueError("Excel 中找不到 DEX 工作表")
 
         ws = workbook["DEX"]
-
         data = []
 
-        # 從 E 欄讀取到 U 欄
-        # E=0, F=1, I=4, L=7, O=10, R=13, U=16
+        # D=0, E=1, F=2, I=5, L=8, O=11, R=14, U=17
 
         for values in ws.iter_rows(
             min_row=2,
-            min_col=5,
+            min_col=4,
             max_col=21,
             values_only=True
         ):
 
-            name = values[0]
+            name = values[1]
 
             if name is None or str(name).strip() == "":
                 continue
 
             row_data = {
+                "D": values[0],
                 "name": str(name).strip(),
-
-                "F": values[1],
-                "I": values[4],
-                "L": values[7],
-                "O": values[10],
-                "R": values[13],
-                "U": values[16],
+                "F": values[2],
+                "I": values[5],
+                "L": values[8],
+                "O": values[11],
+                "R": values[14],
+                "U": values[17],
             }
 
             data.append(row_data)
