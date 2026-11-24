@@ -1,92 +1,160 @@
-from typing import Any
 
+# ============================================================
+#                     篩選模式設定
+# ============================================================
 
 MODE_CONFIG = {
+
     "超級聯盟": {
         "column": "F",
+        "operator": ">",
         "default": 500,
+        "limit_label": "排名限制（F 欄）",
         "limit_type": "rank",
-        "status": "ready",
     },
+
     "高級聯盟": {
         "column": "L",
+        "operator": ">",
         "default": 300,
+        "limit_label": "排名限制（L 欄）",
         "limit_type": "rank",
-        "status": "ready",
     },
+
     "大師聯盟": {
         "column": "O",
+        "operator": ">",
         "default": 100,
+        "limit_label": "排名限制（O 欄）",
         "limit_type": "rank",
-        "status": "ready",
     },
+
     "PVE": {
-        "column": None,
+        "column": "I",
+        "operator": "<",
         "default": 2800,
+        "limit_label": "CP 上限（I 欄）",
         "limit_type": "cp",
-        "status": "pending",
     },
+
     "小小盃": {
         "column": "R",
+        "operator": ">",
         "default": 200,
+        "limit_label": "排名限制（R 欄）",
         "limit_type": "rank",
-        "status": "ready",
     },
 }
 
 
-def _to_number(value: Any) -> float | None:
-    """將 Excel 儲存格內容轉成數字；空值或非數字回傳 None。"""
+# ============================================================
+#                     數值轉換
+# ============================================================
+
+def to_number(value):
+
     if value is None:
         return None
+
     if isinstance(value, bool):
         return None
+
     try:
+        value = str(value).replace(",", "").strip()
+
+        if value == "":
+            return None
+
         return float(value)
-    except (TypeError, ValueError):
+
+    except (ValueError, TypeError):
         return None
 
 
-def generate_string(
-    rows: list[dict[str, Any]],
-    mode: str,
-    limit: int,
-) -> list[str]:
-    """
-    根據模式與限制值篩選 DEX 資料。
+# ============================================================
+#                     產生搜尋字串
+# ============================================================
 
-    規則：
-    1. 篩選指定排名欄位 > limit。
-    2. 讀取 E 欄中文名稱。
-    3. 忽略空白名稱。
-    4. 去重並保留 Excel 原始順序。
-    5. 回傳名稱清單；由 app.py 使用 & 串接。
-    """
+def generate_string(data, mode, limit):
+
     if mode not in MODE_CONFIG:
-        raise ValueError(f"不支援的模式：{mode}")
+        return []
 
     config = MODE_CONFIG[mode]
-    if config["status"] != "ready":
-        raise ValueError(f"{mode} 的資料來源尚未設定。")
 
     column = config["column"]
-    selected_names: list[str] = []
-    seen: set[str] = set()
+    operator = config["operator"]
 
-    for row in rows:
-        rank_value = _to_number(row.get(column))
-        if rank_value is None or rank_value <= limit:
+    selected_names = []
+    seen_names = set()
+
+    for row in data:
+
+        name = row.get("name")
+
+        if not name:
             continue
 
-        raw_name = row.get("name")
-        if raw_name is None:
+        name = str(name).strip()
+
+        if not name:
             continue
 
-        name = str(raw_name).strip()
-        if not name or name in seen:
-            continue
+        # ----------------------------------------------------
+        #                     PVE 篩選
+        # ----------------------------------------------------
 
-        seen.add(name)
-        selected_names.append(name)
+        if mode == "PVE":
+
+            cp_value = to_number(row.get("I"))
+
+            max_type = str(
+                row.get("U") or ""
+            ).strip().upper()
+
+            # 條件一：I 欄 < CP 上限
+            condition_1 = (
+                cp_value is not None
+                and cp_value < limit
+            )
+
+            # 條件二：U 欄 = MAX
+            condition_2 = (
+                max_type == "MAX"
+            )
+
+            matched = condition_1 and condition_2
+
+        # ----------------------------------------------------
+        #                  其他聯盟篩選
+        # ----------------------------------------------------
+
+        else:
+
+            value = to_number(row.get(column))
+
+            if value is None:
+                continue
+
+            if operator == ">":
+                matched = value > limit
+
+            elif operator == "<":
+                matched = value < limit
+
+            else:
+                matched = False
+
+        # ----------------------------------------------------
+        #                     結果整理
+        # ----------------------------------------------------
+
+        if matched:
+
+            # 去除重複名稱，保留第一次出現的順序
+            if name not in seen_names:
+
+                selected_names.append(name)
+                seen_names.add(name)
 
     return selected_names
