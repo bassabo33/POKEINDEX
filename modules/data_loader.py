@@ -1,50 +1,65 @@
+
 from pathlib import Path
-from typing import Any
 
 import openpyxl
 import streamlit as st
 
 
-@st.cache_data(show_spinner="正在讀取 Excel...")
-def load_dex_data(excel_path: str, file_mtime: float | None = None) -> list[dict[str, Any]]:
-    """
-    讀取 DEX 工作表。
-    使用 data_only=True 讀取 Excel 已儲存的計算結果，不在 Python 內重算公式。
+# ============================================================
+#                     Excel 資料讀取
+# ============================================================
 
-    file_mtime 作為快取參數，檔案更新後可避免沿用舊快取。
-    """
-    path = Path(excel_path)
+@st.cache_data
+def load_dex_data(file_path: str, file_mtime: float):
+
+    path = Path(file_path)
+
     if not path.exists():
-        raise FileNotFoundError(path)
+        raise FileNotFoundError(f"找不到 Excel：{file_path}")
 
     workbook = openpyxl.load_workbook(
-        path,
+        file_path,
         read_only=True,
-        data_only=True,
+        data_only=True
     )
 
     try:
         if "DEX" not in workbook.sheetnames:
-            raise ValueError("Excel 中找不到 DEX 工作表。")
+            raise ValueError("Excel 中找不到 DEX 工作表")
 
-        worksheet = workbook["DEX"]
-        rows: list[dict[str, Any]] = []
+        ws = workbook["DEX"]
 
-        # DEX 第 1 列為欄位標題，資料從第 2 列開始。
-        # E 欄為繁體中文譯名。
-        # F / L / O / R 分別為超級 / 高級 / 大師 / 小小盃的排名欄位。
-        for row_number in range(2, worksheet.max_row + 1):
-            name = worksheet.cell(row=row_number, column=5).value
-            values = {
-                "row_number": row_number,
-                "name": name,
-                "F": worksheet.cell(row=row_number, column=6).value,
-                "L": worksheet.cell(row=row_number, column=12).value,
-                "O": worksheet.cell(row=row_number, column=15).value,
-                "R": worksheet.cell(row=row_number, column=18).value,
+        data = []
+
+        # 從 E 欄讀取到 U 欄
+        # E=0, F=1, I=4, L=7, O=10, R=13, U=16
+
+        for values in ws.iter_rows(
+            min_row=2,
+            min_col=5,
+            max_col=21,
+            values_only=True
+        ):
+
+            name = values[0]
+
+            if name is None or str(name).strip() == "":
+                continue
+
+            row_data = {
+                "name": str(name).strip(),
+
+                "F": values[1],
+                "I": values[4],
+                "L": values[7],
+                "O": values[10],
+                "R": values[13],
+                "U": values[16],
             }
-            rows.append(values)
 
-        return rows
+            data.append(row_data)
+
+        return data
+
     finally:
         workbook.close()
